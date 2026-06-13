@@ -131,7 +131,8 @@ export default function PokerGame() {
     // Reset game
     async function resetGame() {
         try {
-            await fetch(`${import.meta.env.VITE_API_URL}/reset`, {
+            const baseUrl = process.env.REACT_APP_API_URL;
+            await fetch(`${baseUrl}/reset`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json"
@@ -309,7 +310,8 @@ export default function PokerGame() {
 
             async function bot_action(validActions) {
 
-                const res = await fetch(`${import.meta.env.VITE_API_URL}/bot_action`, {
+                const baseUrl = process.env.REACT_APP_API_URL;
+                const res = await fetch(`${baseUrl}/bot_action`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
