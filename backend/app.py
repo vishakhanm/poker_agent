@@ -70,6 +70,10 @@ class BotActionResponse(BaseModel):
 
 # ── Routes ────────────────────────────────────────────────────────
 
+@app.get("/")
+def root():
+    return {"status": "running"}
+
 @app.get("/health")
 def health():
     """Simple liveness check."""
