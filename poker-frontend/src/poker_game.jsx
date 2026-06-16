@@ -49,6 +49,7 @@ export default function PokerGame() {
     const [botActedThisStreet, setbotActedThisStreet] = useState(false);
 
     // Game flow
+    const [turnId, setTurnId] = useState(0);
     const [street, setStreet] = useState("preflop");
     const [phase, setPhase] = useState("idle");
     // phase: idle | userTurn | botTurn | showdown | gameOver
@@ -62,6 +63,11 @@ export default function PokerGame() {
 
     const logRef = useRef(null);
 
+    function goToPhase(newPhase) {
+        setPhase(newPhase);
+        setTurnId(id => id + 1);
+    }
+
     function addLog(text, type = "action") {
         setLog(prev => [...prev.slice(-60), { text, type }]);
     }
@@ -74,7 +80,7 @@ export default function PokerGame() {
     // ── Deal new hand ─────────────────────────────────────────
     const dealHand = useCallback((userSB, uStack, bStack) => {
         if (uStack <= 0 || bStack <= 0) {
-            setPhase("gameOver");
+            goToPhase("gameOver");
             return;
         }
         const d = shuffle(buildDeck());
@@ -102,6 +108,8 @@ export default function PokerGame() {
         setWinner(null);
         setLastBotInfo(null);
         setHandNum(n => n + 1);
+        setUserActedThisStreet(false);
+        setbotActedThisStreet(false);
 
         // Deduct blinds from stacks
         setUserStack(uStack - uBet);
@@ -112,10 +120,10 @@ export default function PokerGame() {
 
         // SB acts first preflop
         if (userSB) {
-            setPhase("userTurn");
+            goToPhase("userTurn");
             addLog("Your turn (preflop)", "system");
         } else {
-            setPhase("botTurn");
+            goToPhase("botTurn");
         }
     }, [handNum]);
 
@@ -161,7 +169,7 @@ export default function PokerGame() {
 
         // Game Flow
         setStreet("preflop");
-        setPhase("idle");
+        goToPhase("idle");
         setIsUserSB(true);
         setHandNum(0);
         setShowBotCards(false);
@@ -181,7 +189,6 @@ export default function PokerGame() {
     function advanceStreet(currentStreet, currentPot,
         uStack, bStack, uBet, bBet) {
 
-        setPhase("");
         const streets = ["preflop", "flop", "turn", "river"];
         const idx = streets.indexOf(currentStreet);
         if (idx >= streets.length - 1) {
@@ -199,10 +206,10 @@ export default function PokerGame() {
         addLog(`── ${next.toUpperCase()} ──`, "system");
 
         if (isUserSB) {
-            setPhase("userTurn");
+            goToPhase("userTurn");
             addLog("Your turn", "system");
         } else {
-            setPhase("botTurn");
+            goToPhase("botTurn");
         }
 
     }
@@ -237,7 +244,7 @@ export default function PokerGame() {
         setUserStack(newUS);
         setBotStack(newBS);
         setWinner(w);
-        setPhase("showdown");
+        goToPhase("showdown");
     }
 
     // ── User fold ─────────────────────────────────────────────
@@ -245,7 +252,7 @@ export default function PokerGame() {
         addLog("You fold", "action");
         setBotStack(bs => bs + pot);
         setWinner("bot");
-        setPhase("showdown");
+        goToPhase("showdown");
         setShowBotCards(true);
         addLog(`Bot wins $${pot}`, "warning");
     }
@@ -269,7 +276,7 @@ export default function PokerGame() {
             advanceStreet(street, newPot, newUS, botStack,
                 newUBet, botBet);
         } else {
-            setPhase("botTurn");
+            goToPhase("botTurn");
         }
     }
 
@@ -292,11 +299,10 @@ export default function PokerGame() {
         setUserBet(newUBet);
         setRaisesThisStreet(r => r + 1);
         addLog(`You raise to $${newUBet} (pot $${newPot})`, "action");
-        setPhase("botTurn");
+        goToPhase("botTurn");
     }
 
-    // ── Bot turn ──────────────────────────────────────────────
-    useEffect(() => {
+    function botPlay() {
 
         if (phase !== "botTurn") return;
         setBotThinking(true);
@@ -335,11 +341,14 @@ export default function PokerGame() {
                 setBotThinking(false);
 
                 // console.log(action)
+                if (action === "fold" && callAmt === 0) {
+                    action = "call";
+                }
                 if (action === "fold") {
                     addLog(`Bot folds `, "action");
                     setUserStack(us => us + pot);
                     setWinner("user");
-                    setPhase("showdown");
+                    goToPhase("showdown");
                     setShowBotCards(true);
                     addLog(`You win $${pot} 🏆`, "result");
 
@@ -360,7 +369,7 @@ export default function PokerGame() {
                         advanceStreet(street, newPot, userStack, newBS,
                             userBet, newBBet);
                     } else {
-                        setPhase("userTurn");
+                        goToPhase("userTurn");
                         addLog("Your turn", "system");
                     }
 
@@ -373,11 +382,11 @@ export default function PokerGame() {
                         const newBBet = botBet + actual;
                         setBotStack(newBS); setPot(newPot); setBotBet(newBBet);
                         addLog(`Bot calls $${actual} (raise cap, pot $${newPot})`, "action");
-                        if (newBBet === userBet || actual === 0) {
+                        if (isBettingRoundComplete(userActedThisStreet, botActedThisStreet, userBet, newBBet)) {
                             advanceStreet(street, newPot, userStack, newBS,
                                 userBet, newBBet);
                         } else {
-                            setPhase("userTurn");
+                            goToPhase("userTurn");
                         }
                     } else {
                         const total = callAmt + RAISE_SIZE;
@@ -390,8 +399,8 @@ export default function PokerGame() {
                         setPot(newPot);
                         setBotBet(newBBet);
                         setRaisesThisStreet(r => r + 1);
-                        addLog(`Bot raises to $${newBBet}  pot $${newPot})`, "action");
-                        setPhase("userTurn");
+                        addLog(`Bot raises to $${newBBet}  (pot $${newPot})`, "action");
+                        goToPhase("userTurn");
                         addLog("Your turn", "system");
                     }
                 }
@@ -399,7 +408,12 @@ export default function PokerGame() {
         }, 800 + Math.random() * 600);
 
         return () => clearTimeout(timer);
-    }, [phase]); // eslint-disable-line
+    }
+
+    // ── Bot turn ──────────────────────────────────────────────
+    useEffect(() => {
+        botPlay();
+    }, [turnId]); // eslint-disable-line
 
     // ── Next hand ─────────────────────────────────────────────
     function nextHand() {
@@ -418,7 +432,7 @@ export default function PokerGame() {
 
     // ── Hand name display ─────────────────────────────────────
     function myHandName() {
-        if (userHole.length < 2 || community.length < 5) return "";
+        if (userHole.length < 2 || visibleComm.length < 5) return "";
         const score = bestFive(userHole, community.slice(0, 5));
         return HAND_NAMES[score[0]];
     }
@@ -585,7 +599,7 @@ export default function PokerGame() {
                             fontWeight: "bold"
                         }}>${userStack}</div>
                         {phase !== "idle" && userHole.length === 2 &&
-                            community.length >= 3 && (
+                            visibleComm.length >= 3 && (
                                 <div style={{
                                     color: "#7a9a7a", fontSize: "0.7rem",
                                     marginTop: "2px"
